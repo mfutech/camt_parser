@@ -14,13 +14,14 @@ struct Stmt {
     entries_count: i64,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 struct Ntry {
     account: String,
     date: String,
     description: String,
     debit: String,
     credit: String,
+    ntry_type: String,
 }
 
 fn write_csv_result(
@@ -94,7 +95,7 @@ fn process_camt53(root_element: &Element) {
         if child.is("Ntry", NSAny) {
             let res = ntry_parser(stmt_info.iban.clone(), &child);
             ntry_vec.extend(res);
-            println!("one record");
+            // DEBUG // println!("one record");
         }
     }
     // Print the text content of the first matching <p> element, if any
@@ -125,6 +126,12 @@ fn ntry_parser(account: String, child: &Element) -> Vec<Ntry> {
         .expect("cannot get AddtlNtryInf")
         .text();
 
+    // get type of booking
+    let ntry_type = child
+        .get_child("CdtDbtInd", NSAny)
+        .expect("error in CdtDbtInd")
+        .text();
+
     // create statement record
     let mut record = Ntry {
         account: account,
@@ -132,6 +139,7 @@ fn ntry_parser(account: String, child: &Element) -> Vec<Ntry> {
         description: descr,
         debit: "0".to_string(),
         credit: "0".to_string(),
+        ntry_type: ntry_type,
     };
 
     // get type of booking
@@ -147,29 +155,74 @@ fn ntry_parser(account: String, child: &Element) -> Vec<Ntry> {
     } else {
         record.debit = amount;
     }
-    result.push(record);
+
+    let mut had_ntry_dtls = false;
+    for entry in child.children() {
+        if entry.is("NtryDtls", NSAny) {
+            // DEBUG // println!("found NtryDtls");
+            for ntry_dtls_child in entry.children() {
+                if ntry_dtls_child.is("TxDtls", NSAny) {
+                    // DEBUG // println!("found txdtls");
+                    let txdtls = txdtls_parser(&record, ntry_dtls_child);
+                    result.push(txdtls);
+                    had_ntry_dtls = true;
+                }
+            }
+        }
+    }
+
+    if had_ntry_dtls == false {
+        result.push(record)
+    }
     return result;
 }
 
-fn main_futur() {
-    // Open the CAMT.053 file
-    let file = File::open("path/to/your/file.camt53").expect("Failed to open file");
-    let file = BufReader::new(file);
+fn txdtls_parser(entry: &Ntry, tx_dtls: &Element) -> Ntry {
+    // DEBUG // println!("found a txdtls");
+    let mut result = entry.clone();
+    let mut operation = Err(());
+    let mut amount = Err(());
 
-    // Parse the XML content
-    let document = Document::from_read(file).expect("Failed to parse XML document");
+    for child in tx_dtls.children() {
+        // amount of transaction
+        if child.is("Amt", NSAny) {
+            amount = Ok(child.text());
+        }
 
-    // Example: Extract the text content of specific tags using XPath
-    for element in document.find(Name("SomeElement")) {
-        let text = element.text();
-        println!("Text of SomeElement: {}", text);
+        // type of transaction
+        if child.is("CdtDbtInd", NSAny) {
+            operation = Ok(child.text());
+        }
+
+        // corresponding party
+        if child.is("RltdPties", NSAny) {
+            let nm = child
+                .get_child("Cdtr", NSAny)
+                .and_then(|container| container.get_child("Nm", NSAny))
+                .expect("no cdtr in RltdPties")
+                .text();
+            let iban = child
+                .get_child("CdtrAcct", NSAny)
+                .and_then(|container| container.get_child("Id", NSAny))
+                .and_then(|container| container.get_child("IBAN", NSAny))
+                .expect("no cdtr in RltdPties")
+                .text();
+            let mut description = nm;
+            description.push_str(" - ");
+            description.push_str(&iban);
+            result.description = description;
+        }
     }
-
-    // Example: Extract the attribute value of specific tags using XPath
-    for element in document.find(Name("SomeElement[attribute='value']")) {
-        let attribute_value = element.attr("attribute");
-        println!("Attribute value of SomeElement: {:?}", attribute_value);
+    let amount = amount.expect("did not find amount");
+    if operation.expect("did not found operation type").eq("DBIT") {
+        result.debit = amount;
+        result.credit = "0".to_string();
+    } else {
+        result.credit = amount;
+        result.debit = "0".to_string();
     }
+    // DEBUG // println!("found {:?}", result);
+    return result;
 }
 
 fn main_old() {
