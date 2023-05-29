@@ -8,6 +8,9 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter, Read};
 use xml::reader::{EventReader, XmlEvent};
 
+// cli
+use clap::{Arg, Command};
+
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 struct Stmt {
     iban: String,
@@ -39,30 +42,68 @@ fn write_csv_result(
     writer.flush()?;
     Ok(())
 }
-/*se_xml(xml_content: &str) -> Result<Element, MiniDomError> {
-    let mut parser = minidom::Parser::new();
-    //let dom = parser.parse(xml_content.as_bytes())?;
-    Ok(dom.root)
-}
-*/
+
 fn main() {
-    // Open the CAMT.053 file
-    let mut file = File::open("file.camt53").expect("Failed to open file");
+    let matches = Command::new("CAMT53 parser")
+        .author("mfutech")
+        .version("1.0.0")
+        .about("export all transaction of a CAMT53 into a csv file")
+        .arg(
+            Arg::new("output")
+                .short('o')
+                .long("output")
+                .value_name("FILE")
+                .help("Sets the output file to use")
+                .default_value("output.csv"),
+        )
+        .arg(
+            Arg::new("input_files")
+                .trailing_var_arg(true)
+                .num_args(1..=100)
+                .value_name("FILE")
+                .help("file to be parsed CAMT53 format"),
+        )
+        /*        .after_help(
+                    "Longer explanation to appear after the options when \
+                         displaying the help information from --help or -h",
+                )
+        */
+        .get_matches();
 
-    // read the file into memory
-    let mut xml_content = String::new();
-    file.read_to_string(&mut xml_content)
-        .expect("Failed to read CAMT53 file");
+    let output_filename = matches
+        .get_one::<String>("output")
+        .expect("need an output file");
 
-    // parse XML file
-    let xml_content = xml_content.as_str();
-    let root_element = xml_content.parse().expect("Failed to parse XML");
+    let input_filenames = matches
+        .get_many::<String>("input_files")
+        .unwrap_or_default()
+        .map(|v| v.as_str())
+        .collect::<Vec<_>>();
 
-    // Extract and process the desired information from the CAMT53 file
-    process_camt53(&root_element);
+    let mut entries = Vec::<Ntry>::new();
+
+    for filename in input_filenames {
+        // Open the CAMT.053 file
+        let mut file = File::open(filename).expect("Failed to open file");
+
+        // read the file into memory
+        let mut xml_content = String::new();
+        file.read_to_string(&mut xml_content)
+            .expect("Failed to read CAMT53 file");
+
+        // parse XML file
+        let xml_content = xml_content.as_str();
+        let root_element = xml_content.parse().expect("Failed to parse XML");
+
+        // Extract and process the desired information from the CAMT53 file
+        let result = process_camt53(&root_element);
+        entries.extend(result);
+    }
+
+    write_csv_result(output_filename, &entries).expect("CSV output failed");
 }
 
-fn process_camt53(root_element: &Element) {
+fn process_camt53(root_element: &Element) -> Vec<Ntry> {
     // Parse the XML content
     let customer_statment = root_element.get_child("BkToCstmrStmt", NSAny).unwrap();
 
@@ -98,9 +139,7 @@ fn process_camt53(root_element: &Element) {
             // DEBUG // println!("one record");
         }
     }
-    // Print the text content of the first matching <p> element, if any
-    println!("First matching element: {:?}", stmt_info);
-    write_csv_result("output.csv", &ntry_vec).expect("CSV output failed");
+    return ntry_vec;
 }
 
 fn ntry_parser(account: String, child: &Element) -> Vec<Ntry> {
