@@ -1,10 +1,10 @@
 use csv::WriterBuilder;
 use glob::glob;
 use minidom::Element;
-use minidom::Error as MiniDomError;
+//use minidom::Error as MiniDomError;
 use minidom::NSChoice::Any as NSAny;
 use std::fs::File;
-use std::io::{BufReader, BufWriter, Read};
+use std::io::{BufWriter, Read};
 
 // cli
 use clap::{Arg, Command};
