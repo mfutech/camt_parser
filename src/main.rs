@@ -1,13 +1,10 @@
-use csv::{Writer, WriterBuilder};
+use csv::WriterBuilder;
 use glob::glob;
 use minidom::Element;
 use minidom::Error as MiniDomError;
 use minidom::NSChoice::Any as NSAny;
-use select::document::Document;
-use select::predicate::{Attr, Name, Text};
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Read};
-use xml::reader::{EventReader, XmlEvent};
 
 // cli
 use clap::{Arg, Command};
@@ -244,7 +241,7 @@ fn txdtls_parser(entry: &Ntry, tx_dtls: &Element) -> Ntry {
             // find either Cdtr or Dbtr Nm
             let mut partner_nm = "unknown_partner".to_string();
             let mut iban = "unknown_iban".to_string();
-            let mut not_found_element = Element::builder("NotFound", "NotFound")
+            let not_found_element = Element::builder("NotFound", "NotFound")
                 .append("Not Found")
                 .build();
 
@@ -293,81 +290,4 @@ fn txdtls_parser(entry: &Ntry, tx_dtls: &Element) -> Ntry {
     }
     // DEBUG // println!("found {:?}", result);
     return result;
-}
-
-fn main_old() {
-    // Open the CAMT.053 file
-    let file = File::open("file.camt53").expect("Failed to open file");
-    let file = BufReader::new(file);
-    let parser = EventReader::new(file);
-
-    let mut writer = Writer::from_path("output.csv").expect("Failed to create CSV writer");
-
-    let mut current_element = String::new();
-
-    // Iterate over the XML events
-    for event in parser {
-        match event {
-            Ok(XmlEvent::StartElement { name, .. }) => {
-                // Set the current element name
-                println!("start {}", name.local_name.clone());
-                current_element = name.local_name.clone();
-            }
-            Ok(XmlEvent::EndElement { name }) => {
-                // Process end element based on the current element name
-                match current_element.as_str() {
-                    "Stmt" => {
-                        // Process Stmt end tag
-                        println!("End of Stmt");
-                        // Write data to CSV file
-                        writer
-                            .write_record(&["Stmt"])
-                            .expect("Failed to write record");
-                    }
-                    "AnotherElement" => {
-                        // Process AnotherElement end tag
-                        println!("End of AnotherElement");
-                        // Write data to CSV file
-                        writer
-                            .write_record(&["AnotherElement"])
-                            .expect("Failed to write record");
-                    }
-                    // Handle other elements as needed
-                    _ => {}
-                }
-            }
-            Ok(XmlEvent::Characters(text)) => {
-                // Process text content based on the current element name
-                match current_element.as_str() {
-                    "SomeElement" => {
-                        // Process text content of SomeElement
-                        println!("Text of SomeElement: {}", text);
-                        // Write data to CSV file
-                        writer
-                            .write_record(&[text])
-                            .expect("Failed to write record");
-                    }
-                    "AnotherElement" => {
-                        // Process text content of AnotherElement
-                        println!("Text of AnotherElement: {}", text);
-                        // Write data to CSV file
-                        writer
-                            .write_record(&[text])
-                            .expect("Failed to write record");
-                    }
-                    // Handle other elements as needed
-                    _ => {}
-                }
-            }
-            Err(e) => {
-                // Handle XML parsing error
-                eprintln!("Error: {}", e);
-                break;
-            }
-            _ => {}
-        }
-    }
-
-    // Flush and close the CSV writer
-    writer.flush().expect("Failed to flush CSV writer");
 }
