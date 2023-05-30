@@ -1,4 +1,5 @@
 use csv::{Writer, WriterBuilder};
+use glob::glob;
 use minidom::Element;
 use minidom::Error as MiniDomError;
 use minidom::NSChoice::Any as NSAny;
@@ -82,22 +83,27 @@ fn main() {
 
     let mut entries = Vec::<Ntry>::new();
 
-    for filename in input_filenames {
-        // Open the CAMT.053 file
-        let mut file = File::open(filename).expect("Failed to open file");
+    for filenames in input_filenames {
+        for filename in glob(filenames).expect("invalid glob pattern") {
+            // Open the CAMT.053 file
+            let filename = filename.unwrap();
+            let mut file = File::open(filename.clone()).expect("Failed to open file");
 
-        // read the file into memory
-        let mut xml_content = String::new();
-        file.read_to_string(&mut xml_content)
-            .expect("Failed to read CAMT53 file");
+            println!("processing file: {:?}", filename);
 
-        // parse XML file
-        let xml_content = xml_content.as_str();
-        let root_element = xml_content.parse().expect("Failed to parse XML");
+            // read the file into memory
+            let mut xml_content = String::new();
+            file.read_to_string(&mut xml_content)
+                .expect("Failed to read CAMT53 file");
 
-        // Extract and process the desired information from the CAMT53 file
-        let result = process_camt53(&root_element);
-        entries.extend(result);
+            // parse XML file
+            let xml_content = xml_content.as_str();
+            let root_element = xml_content.parse().expect("Failed to parse XML");
+
+            // Extract and process the desired information from the CAMT53 file
+            let result = process_camt53(&root_element);
+            entries.extend(result);
+        }
     }
 
     write_csv_result(output_filename, &entries).expect("CSV output failed");
@@ -235,18 +241,43 @@ fn txdtls_parser(entry: &Ntry, tx_dtls: &Element) -> Ntry {
 
         // corresponding party
         if child.is("RltdPties", NSAny) {
-            let nm = child
-                .get_child("Cdtr", NSAny)
-                .and_then(|container| container.get_child("Nm", NSAny))
-                .expect("no cdtr in RltdPties")
-                .text();
-            let iban = child
-                .get_child("CdtrAcct", NSAny)
-                .and_then(|container| container.get_child("Id", NSAny))
-                .and_then(|container| container.get_child("IBAN", NSAny))
-                .expect("no cdtr in RltdPties")
-                .text();
-            let mut description = nm;
+            // find either Cdtr or Dbtr Nm
+            let mut partner_nm = "unknown_partner".to_string();
+            let mut iban = "unknown_iban".to_string();
+            let mut not_found_element = Element::builder("NotFound", "NotFound")
+                .append("Not Found")
+                .build();
+
+            if let Some(cdtr) = child.get_child("Cdtr", NSAny) {
+                partner_nm = cdtr.get_child("Nm", NSAny).expect("Cdtr without Nm").text();
+                match child.get_child("CdtrAcct", NSAny) {
+                    Some(cdtracct) => {
+                        iban = cdtracct
+                            .get_child("Id", NSAny)
+                            .and_then(|container| container.get_child("IBAN", NSAny))
+                            .expect("no cdtr IBAN in RltdPties")
+                            .text();
+                    }
+                    _ => iban = "UKNOWN IBAN".to_string(),
+                }
+            }
+
+            if let Some(dbtr) = child.get_child("Dbtr", NSAny) {
+                partner_nm = dbtr.get_child("Nm", NSAny).expect("Cdtr without Nm").text();
+                match child.get_child("DbtrAcct", NSAny) {
+                    Some(dbtracct) => {
+                        iban = dbtracct
+                            .get_child("Id", NSAny)
+                            .and_then(|container| container.get_child("IBAN", NSAny))
+                            .unwrap_or(&not_found_element)
+                            .text()
+                    }
+
+                    _ => iban = "UKNOWN IBAN".to_string(),
+                }
+            }
+
+            let mut description = partner_nm;
             description.push_str(" - ");
             description.push_str(&iban);
             result.description = description;

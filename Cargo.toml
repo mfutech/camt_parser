@@ -12,3 +12,4 @@ xml-rs = "0.8.13"
 serde = { version = "1.0", features = ["derive"] }
 minidom = "0.15.2"
 clap = "4.3.0"
+glob = "0.3.1"
