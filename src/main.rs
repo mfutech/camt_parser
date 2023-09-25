@@ -59,7 +59,8 @@ fn main() {
                 .trailing_var_arg(true)
                 .num_args(1..=100)
                 .value_name("FILE")
-                .help("file to be parsed CAMT53 format"),
+                .help("file to be parsed CAMT53 format")
+                .default_value("*.xml"),
         )
         /*        .after_help(
                     "Longer explanation to appear after the options when \
