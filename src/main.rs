@@ -9,20 +9,22 @@ use std::io::{BufWriter, Read};
 // cli
 use clap::{Arg, Command};
 
+// Statement
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 struct Stmt {
     iban: String,
     entries_count: i64,
 }
 
+// Entry (NTry)
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 struct Ntry {
-    account: String,
-    date: String,
-    description: String,
-    debit: String,
-    credit: String,
-    ntry_type: String,
+    account: String,     // Account
+    date: String,        // date
+    description: String, //description of transaction
+    debit: String,       // debit amount
+    credit: String,      // credit amount
+    ntry_type: String,   // type of entry
 }
 
 fn write_csv_result(
@@ -255,7 +257,7 @@ fn txdtls_parser(entry: &Ntry, tx_dtls: &Element) -> Ntry {
                             .expect("no cdtr IBAN in RltdPties")
                             .text();
                     }
-                    _ => iban = "UKNOWN IBAN".to_string(),
+                    _ => iban = "no IBAN".to_string(),
                 }
             }
 
@@ -278,6 +280,15 @@ fn txdtls_parser(entry: &Ntry, tx_dtls: &Element) -> Ntry {
             description.push_str(" - ");
             description.push_str(&iban);
             result.description = description;
+        }
+
+        // Remote Information / Ustrd
+        if child.is("RmtInf", NSAny) {
+            let ustrd = child
+                .get_child("Ustrd", NSAny)
+                .expect("RmtInf without Ustrd")
+                .text();
+            result.description.push_str(&ustrd);
         }
     }
     let amount = amount.expect("did not find amount");
